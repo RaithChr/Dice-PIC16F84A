@@ -288,8 +288,8 @@ if (sleep_counter >= SLEEP_TIMEOUT) {
 
 Wenn dir dieses Projekt gefällt, unterstütze mich gerne:
 
-[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Support-yellow?logo=buy-me-a-coffee)](https://buymeacoffee.com/oe3lcr)
-[![PayPal](https://img.shields.io/badge/PayPal-Donate-blue?logo=paypal)](https://paypal.me/oe3lcr)
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Support-yellow?style=for-the-badge&logo=buy-me-a-coffee)](https://www.buymeacoffee.com/christianraith)
+[![PayPal](https://img.shields.io/badge/PayPal-Donate-blue?style=for-the-badge&logo=paypal)](https://paypal.me/christianraith151)
 
 Jeder Beitrag hilft, weitere Open-Source-Projekte zu entwickeln! 🚀
 
@@ -339,7 +339,8 @@ SOFTWARE.
 ## 🔗 Weitere Projekte
 
 - 🌐 [HamClock Dashboard](https://craith.cloud) — Echtzeit-Funkamateur-Dashboard
-- 📡 Weitere Projekte auf [GitHub](https://github.com/RaithChr)
+- 📡 [Frequenzmessung](https://github.com/RaithChr/Frequenzmessung) — PIC16F628A Frequenzzähler
+- 🔧 Weitere Projekte auf [GitHub](https://github.com/RaithChr)
 
 ---
 
