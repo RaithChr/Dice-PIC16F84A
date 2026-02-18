@@ -344,7 +344,42 @@ SOFTWARE.
 
 ---
 
+## 🐛 Bugfixes v2.2 (2026-02-18)
+
+Alle kritischen Bugs aus der Code-Review behoben:
+
+| Fix | Problem | Lösung |
+|-----|---------|--------|
+| **FIX-1** | `PORTC` → RMW-Problem bei schnellen Zugriffen | `LATC` / `LATA5` für Ausgaben |
+| **FIX-2** | `uint16_t sleep_counter` nicht atomar | `read_sleep_counter()` mit GIE-Sperre |
+| **FIX-3** | Manuelles Löschen von `IOCIF` (read-only!) | Nur `IOCAF4` löschen → auto-clear |
+| **FIX-4** | Endlosschleife bei Hardware-Fehler | `BUTTON_TIMEOUT = 60000` |
+| **FIX-5** | Makro-Kollision `A–G` mit Standard-Headers | `LED_A` bis `LED_G` |
+| **FIX-6** | `_XTAL_FREQ` nach `#include <xc.h>` | `#define` **vor** `#include` |
+| **FIX-7** | Startup: LEDs bleiben an → Stromverschwendung | LEDs aus am Ende von `startup_seq()` |
+| **FIX-8** | RA0–RA2 floating → undefiniert | Als Ausgänge (LOW) definiert |
+| **FIX-9** | C1: 10µF Elko als Bypass | 100nF Keramik + 3,3µF Elko |
+
+**RMW-Problem (FIX-1):**
+Der PIC16F1825 hat LAT-Register (Latch-Register), die den letzten **geschriebenen** Wert speichern. Bei `PORTC = ...` liest der PIC den **aktuellen Pin-Zustand** zurück (Read-Modify-Write) — wenn ein Pin gerade schaltet, kann das zu falschen Ausgaben führen. `LATC` vermeidet das komplett.
+
+**Atomic Access (FIX-2):**
+Auf einem 8-Bit-PIC wird `uint16_t` in **zwei** Byte-Zugriffen gelesen/geschrieben. Die ISR kann genau dazwischen feuern → inkonsistenter Wert! Lösung: GIE kurz sperren, Zugriff, GIE freigeben.
+
+**IOCIF Read-Only (FIX-3):**
+Auf dem PIC16F1825 ist `IOCIF` (Interrupt-on-Change Flag) **read-only** — es wird automatisch gelöscht, sobald alle Sub-Flags (`IOCxFy`) = 0 sind. Manuelles `IOCIF = 0` hat **keine Wirkung** und ist irreführend.
+
+---
+
 ## 📝 Changelog
+
+### v2.2 (2026-02-18)
+- 🐛 9 kritische Bugfixes (siehe oben)
+- 🔧 LAT-Register für Ausgaben (RMW-Fix)
+- 🔧 Atomare 16-Bit-Zugriffe
+- 🔧 LED-Makros umbenannt (Kollisionssicher)
+- 🔧 Startup: LEDs aus (Stromsparen)
+- 📄 BOM: 100nF Keramik-C empfohlen
 
 ### v2.0 (2026-02-18)
 - ✨ Auto-Sleep-Funktion (PIC16F1825)
