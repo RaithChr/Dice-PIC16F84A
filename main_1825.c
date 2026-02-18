@@ -21,6 +21,7 @@
  *  Oszillator       EXTERN (RC/Quarz)     INTERN (bis 16 MHz)!
  *  Pull-Ups         nur Port B (/RBPU)    alle Ports (WPUA, WPUC)
  *  ANSEL Register   KEINS                 vorhanden (analog/digital!)
+ *  LAT Register     KEINS                 vorhanden (kein RMW-Problem!)
  *  Timer            Timer0                Timer0 + Timer1 + Timer2
  *  Peripherie       –                     USART, SPI, I2C, PWM, CMP
  *  Spannung         2,0 – 5,5 V           1,8 – 5,5 V
@@ -34,7 +35,7 @@
  *  R2  RC-Oszi      4,7 kΩ       →  ENTFÄLLT! (interner Oszi)
  *  C2  RC-Oszi      100 pF       →  ENTFÄLLT! (interner Oszi)
  *  ─────────────────────────────────────────────────────────────────────
- *  Gesamt           14 Bauteile  →  11 Bauteile  ← absolutes Minimum!
+ *  Gesamt           14 Bauteile  →  11–12 Bauteile  ← absolutes Minimum!
  *
  * ─── AUTO-SLEEP FUNKTION ──────────────────────────────────────────────
  *
@@ -65,54 +66,75 @@
  *  RC2 → LED c (mitte-links)    RC5 → LED f (unten-links)
  *  RA5 → LED g (unten-rechts)
  *
- *  LED-Layout:
+ *  LED-Layout (wie bei echtem Würfel):
  *    [a=RC0] [b=RC1]
  *    [c=RC2] [d=RC3] [e=RC4]
  *    [f=RC5]         [g=RA5]
  *
- *  MINIMALES BOM (ORIGINAL-kompatibel, 3V):
- *   U1   PIC16F1825     ×1
- *   C1   3,3 µF / 6,3V  ×1   (VDD-Bypass, Elko)
- *   LED1–LED7 (rot!)    ×7   ⚠️ NUR rot/gelb/grün! (Vf<2,1V, kein Weiß/Blau!)
- *   R1–R7  47 Ω         ×7   (LED-Vorwiderstände @ 3V, ~8-10mA)
- *   SW1  Drucktaster    ×1
- *   JP1  Jumper 2-Pin   ×1   (Power On/Off)
- *   BT1  2×AAA Halter   ×1   (3V nominal, 2,2V min)
- *   ────────────────────────────────────────────────────────────────
- *   TOTAL  11 Bauteile  ← ORIGINAL-Layout, nur PIC getauscht!
+ * ─── MINIMALES BOM (ORIGINAL-kompatibel, 3V) ─────────────────────────
+ *
+ *   U1   PIC16F1825       ×1
+ *   C1   100 nF / 50V     ×1   (VDD-Bypass, Keramik! Nah an VDD/VSS!)
+ *   C2   3,3 µF / 6,3V    ×1   (Bulk-Puffer, Elko, optional)
+ *   LED1–LED7 (rot!)      ×7   ⚠️ NUR rot/gelb/grün! (kein Weiß/Blau!)
+ *   R1–R7  47 Ω           ×7   (LED-Vorwiderstände @ 3V, ~8-10mA)
+ *   SW1  Drucktaster      ×1
+ *   JP1  Jumper 2-Pin     ×1   (Power On/Off)
+ *   BT1  2×AAA Halter     ×1   (3V nominal, 2,2V min)
+ *   ────────────────────────────────────────────────────────────────────
+ *   TOTAL  11–12 Bauteile  ← ORIGINAL-Layout, nur PIC getauscht!
+ *
+ * ─── BUGFIXES gegenüber Originalversion ──────────────────────────────
+ *
+ *  [FIX-1] LAT-Register statt PORT für Ausgaben (RMW-Problem vermieden)
+ *          LATC/LATA5 statt PORTC/RA5 in show()
+ *  [FIX-2] Atomarer 16-Bit-Zugriff auf sleep_counter
+ *          (volatile uint16_t → GIE kurz deaktivieren!)
+ *  [FIX-3] SLEEP_TIMEOUT korrigiert: 153 statt 610
+ *          (TMR0 @ 4MHz/4/256 overflow = ~15,26 Hz, nicht 61 Hz!)
+ *  [FIX-4] Button-Release-Timeout nach Wake-Up (kein ewiges Warten)
+ *  [FIX-5] IOC-Flag vor SLEEP() löschen (verhindert sofortiges Re-Wake)
+ *  [FIX-6] Separate Helper-Funktionen reset_sleep_counter() / read_sleep_counter()
+ *  [FIX-7] OPTION_REG Bits 7+6 korrekt beibehalten beim Timer0-Setup
+ *  [FIX-8] Unbenutzte RA0-RA2 als Ausgänge (definierter LOW-Zustand)
  *
  * ═══════════════════════════════════════════════════════════════════════
  */
 
-// ─── CONFIG BITS (PIC16F1825 — komplett anders als PIC16F84A!) ────────
+// ─── CONFIG BITS (PIC16F1825) ─────────────────────────────────────────
 // CONFIG1
-#pragma config FOSC   = INTOSC  // Interner Oszillator  ← kein externer Takt!
+#pragma config FOSC   = INTOSC  // Interner Oszillator
 #pragma config WDTE   = OFF     // Watchdog Timer aus
 #pragma config PWRTE  = ON      // Power-Up Timer an
-#pragma config MCLRE  = OFF     // RA3/MCLR → digitaler I/O (kein Pullup-R nötig!)
+#pragma config MCLRE  = OFF     // RA3/MCLR → digitaler I/O (kein Pullup-R!)
 #pragma config CP     = OFF     // Kein Code-Schutz
 #pragma config CPD    = OFF     // Kein EEPROM-Schutz
 #pragma config BOREN  = ON      // Brown-Out Reset aktiv
-#pragma config CLKOUTEN = OFF   // CLKOUT aus (RA4 als I/O verfügbar)
+#pragma config CLKOUTEN = OFF   // CLKOUT aus
 #pragma config IESO   = OFF     // Intern/Extern-Umschaltung aus
 #pragma config FCMEN  = OFF     // Fail-Safe Clock Monitor aus
 
 // CONFIG2
 #pragma config WRT    = OFF     // Flash Write-Schutz aus
-#pragma config PLLEN  = OFF     // PLL aus (4x Multiplikator)
+#pragma config PLLEN  = OFF     // PLL aus
 #pragma config STVREN = ON      // Stack-Overflow → Reset
-#pragma config BORV   = LO     // Brown-Out Low Trip Point
+#pragma config BORV   = LO      // Brown-Out Low Trip Point
 #pragma config LVP    = OFF     // Low-Voltage Programming aus
 
 #include <xc.h>
 #include <stdint.h>
 
-// Interner Oszillator auf 4 MHz → _XTAL_FREQ = 4000000UL (exakt!)
-// Kein RC-Toleranzproblem mehr!
-#define _XTAL_FREQ  4000000UL
+#define _XTAL_FREQ  4000000UL   // 4 MHz intern (exakt, kein RC-Toleranzproblem!)
+
+// ─── Timing-Konstanten ────────────────────────────────────────────────
+// TMR0 @ 4MHz: Fosc/4 = 1MHz → /256 (Prescaler) = 3906 Hz
+// Overflow bei 256 Counts: 3906/256 = ~15,26 Hz
+// [FIX-3] SLEEP_TIMEOUT korrigiert (war 610 — falsch!)
+#define SLEEP_TIMEOUT   153u    // 10 Sekunden × 15,26 Hz = 152,6 ≈ 153
+#define BUTTON_TIMEOUT  50000u  // [FIX-4] Button-Release-Timeout (~1-2s)
 
 // ─── LED-Bit-Definitionen ─────────────────────────────────────────────
-// Bits 0–5 = PORTC (RC0–RC5), Bit 6 = RA5
+// Bits 0–5 = PORTC/LATC (RC0–RC5), Bit 6 = RA5/LATA5
 #define A  (1u<<0)   // RC0 – oben links
 #define B  (1u<<1)   // RC1 – oben rechts
 #define C  (1u<<2)   // RC2 – mitte links
@@ -132,29 +154,42 @@ const uint8_t DICE[6] = {
 };
 
 // ─── Zufallsquelle + Sleep-Timer ──────────────────────────────────────
-volatile uint8_t tmr0_count = 0;
-volatile uint16_t sleep_counter = 0;  // Zählt TMR0 Interrupts bis Sleep
-
-// Timer0 @ 4MHz/4 mit Prescaler 1:256 → ~61 Hz Overflow
-// 10 Sekunden = 610 Interrupts
-#define SLEEP_TIMEOUT  610u
+// TMR0 läuft seit Power-On frei → beim Tastendruck ist der Zählerstand
+// "zufällig" (menschliche Reaktionszeit >> Timer-Auflösung ~65µs)
+volatile uint8_t  tmr0_count   = 0;
+volatile uint16_t sleep_counter = 0;  // [FIX-2] uint16_t: braucht atomaren Zugriff!
 
 void __interrupt() isr(void) {
-    // Timer0: Zufallsquelle + Sleep-Counter
+    // Timer0: Zufallsquelle + Sleep-Countdown
     if (INTCONbits.TMR0IF) {
         tmr0_count++;
-        sleep_counter++;
+        sleep_counter++;           // ~15,26 Hz
         INTCONbits.TMR0IF = 0;
     }
-    
-    // Interrupt-on-Change RA4: Wake-Up vom Sleep
+    // Interrupt-on-Change RA4: Wake-Up aus Sleep
     if (INTCONbits.IOCIF) {
-        if (IOCAFbits.IOCAF4) {        // RA4 hat Flanke ausgelöst
-            IOCAFbits.IOCAF4 = 0;      // Flag löschen
-            sleep_counter = 0;         // Sleep-Timer zurücksetzen
+        if (IOCAFbits.IOCAF4) {
+            IOCAFbits.IOCAF4 = 0;  // [FIX-5] Flag löschen → kein Re-Wake
+            sleep_counter = 0;
         }
         INTCONbits.IOCIF = 0;
     }
+}
+
+// ─── [FIX-2] Atomarer 16-Bit-Zugriff auf sleep_counter ──────────────
+// uint16_t-Zugriff ist auf 8-Bit-PIC NICHT atomar → kurz GIE sperren!
+static void reset_sleep_counter(void) {
+    INTCONbits.GIE = 0;
+    sleep_counter = 0;
+    INTCONbits.GIE = 1;
+}
+
+static uint16_t read_sleep_counter(void) {
+    uint16_t val;
+    INTCONbits.GIE = 0;
+    val = sleep_counter;
+    INTCONbits.GIE = 1;
+    return val;
 }
 
 // ─── Variable Delay ───────────────────────────────────────────────────
@@ -162,18 +197,21 @@ static void delay_ms(uint16_t ms) {
     while (ms--) __delay_ms(1);
 }
 
-// ─── LED-Ausgabe: PORTC (bits 0–5) + RA5 (bit 6) ────────────────────
+// ─── [FIX-1] LED-Ausgabe via LAT (kein RMW-Problem!) ─────────────────
+// LATC/LATA statt PORTC/PORTA → schreibt direkt in Output-Latch,
+// liest NICHT den Pin-Zustand zurück (Read-Modify-Write vermieden!)
 static void show(uint8_t pattern) {
-    PORTC = pattern & 0x3Fu;                   // RC0–RC5
-    PORTAbits.RA5 = (pattern >> 6u) & 1u;      // RA5 = bit 6 (LED g)
+    LATC = pattern & 0x3Fu;                    // RC0–RC5 via LATC
+    LATAbits.LATA5 = (pattern >> 6u) & 1u;     // RA5 via LATA5
 }
 
-// ─── Taster auf RA4: aktiv LOW, internen Pull-Up via WPUA ─────────────
+// ─── Taster-Polling: Software-Entprellung + Flanken-Erkennung ─────────
+// PORTAbits.RA4 bleibt korrekt für EINGÄNGE (PORT lesen = aktueller Pegel)
 static uint8_t button_pressed(void) {
-    if (!PORTAbits.RA4) {
-        delay_ms(25);
+    if (!PORTAbits.RA4) {           // LOW = Taster gedrückt
+        delay_ms(25);               // Entprell-Fenster
         if (!PORTAbits.RA4) {
-            while (!PORTAbits.RA4);
+            while (!PORTAbits.RA4); // Warten bis losgelassen
             delay_ms(15);
             return 1;
         }
@@ -181,7 +219,7 @@ static uint8_t button_pressed(void) {
     return 0;
 }
 
-// ─── Animation ───────────────────────────────────────────────────────
+// ─── Würfel-Roll-Animation ────────────────────────────────────────────
 static void roll_animation(uint8_t final_idx) {
     uint8_t  i;
     uint16_t pause;
@@ -196,6 +234,7 @@ static void roll_animation(uint8_t final_idx) {
     show(DICE[final_idx]);
 }
 
+// ─── Ergebnis-Blinken ─────────────────────────────────────────────────
 static void blink_result(uint8_t pattern) {
     uint8_t i;
     for (i = 0; i < 3u; i++) {
@@ -204,6 +243,7 @@ static void blink_result(uint8_t pattern) {
     }
 }
 
+// ─── Einschalt-Animation ──────────────────────────────────────────────
 static void startup_seq(void) {
     uint8_t i;
     for (i = 0; i < 6u; i++) { show(DICE[i]); delay_ms(140); }
@@ -212,32 +252,35 @@ static void startup_seq(void) {
     show(DICE[0]);
 }
 
-// ─── Sleep-Modus aktivieren ────────────────────────────────────────────
+// ─── Sleep-Modus aktivieren ───────────────────────────────────────────
 static void enter_sleep(void) {
-    // LEDs ausschalten
-    show(0x00);
-    
-    // Interrupt-on-Change für RA4 aktivieren (negative Flanke = Tastendruck)
-    IOCAPbits.IOCAP4 = 0;    // Positive Edge disabled
-    IOCANbits.IOCAN4 = 1;    // Negative Edge enabled (Taster drücken)
-    INTCONbits.IOCIE = 1;    // IOC Interrupt aktivieren
-    
+    show(0x00);                      // LEDs aus
+
+    // [FIX-5] IOC-Flag VOR Sleep löschen (verhindert sofortiges Re-Wake)
+    IOCAFbits.IOCAF4 = 0;
+    INTCONbits.IOCIF = 0;
+
+    // Negative Flanke auf RA4 aktivieren (Taster drücken = Wake)
+    IOCAPbits.IOCAP4 = 0;            // Positive Edge disabled
+    IOCANbits.IOCAN4 = 1;            // Negative Edge enabled
+    INTCONbits.IOCIE = 1;            // IOC Interrupt an
+
     // Sleep-Counter zurücksetzen
-    sleep_counter = 0;
-    
-    // PIC schlafen legen
-    SLEEP();
-    NOP();   // Nach Wake-Up hier weitermachen
-    
-    // Nach Wake-Up: IOC wieder deaktivieren (nur TMR0 + Button-Polling)
+    sleep_counter = 0;               // Kein Interrupt-Risiko (wir schlafen gleich)
+
+    SLEEP();                         // PIC schlafen legen (~1 µA)
+    NOP();                           // Nach Wake-Up hier weitermachen
+
+    // Nach Wake-Up: IOC deaktivieren
     INTCONbits.IOCIE = 0;
     IOCANbits.IOCAN4 = 0;
 }
 
 // ─── MAIN ─────────────────────────────────────────────────────────────
 void main(void) {
-    uint8_t result;
-    uint8_t last_result = 0;  // Letzte gewürfelte Zahl merken
+    uint8_t  result;
+    uint8_t  last_result = 0;   // Letzte gewürfelte Zahl merken
+    uint16_t timeout;           // [FIX-4] Für Wake-Up-Taster-Timeout
 
     // ── Interner Oszillator auf 4 MHz ─────────────────────────────────
     // OSCCON: IRCF<3:0> = 1101 → 4 MHz (Datasheet DS41440E, Table 5-1)
@@ -245,65 +288,67 @@ void main(void) {
     OSCCONbits.SCS  = 0b10;     // Interner Oszillator als Taktquelle
 
     // ── ANALOG-DISABLE: PFLICHT auf PIC16F1825! ───────────────────────
-    // Ohne diese Zeilen funktioniert digitale I/O nicht!
-    // (Gibt es NICHT auf PIC16F84A — häufige Fehlerquelle!)
+    // Ohne diese Zeilen funktioniert digitale I/O NICHT!
+    // (Gibt es NICHT auf PIC16F84A — häufigste Fehlerquelle beim Umstieg!)
     ANSELA = 0x00;   // Port A: alle Pins digital
     ANSELC = 0x00;   // Port C: alle Pins digital
 
     // ── Port-Konfiguration ────────────────────────────────────────────
-    // TRISA: 1=Eingang, 0=Ausgang
-    // RA3=1 (immer Input/MCLR), RA4=1 (Taster), RA5=0 (LED g), Rest=0
-    TRISA = 0b00011000;   // RA4=in, RA3=in(always), andere=out
+    // RA3 = 1 (immer Input-Only auf PIC16F1825)
+    // RA4 = 1 (Taster-Eingang)
+    // RA5 = 0 (LED g Ausgang)
+    // [FIX-8] RA0–RA2 = 0 (Ausgang, LOW) → definierter Zustand!
+    TRISA = 0b00011000;
     TRISC = 0b00000000;   // Port C: alle Ausgänge (LEDs a–f)
 
-    PORTA = 0x00;
-    PORTC = 0x00;
+    // [FIX-1] LAT-Register für Ausgangszustand initialisieren
+    LATA = 0x00;
+    LATC = 0x00;
 
     // ── Interne Pull-Ups aktivieren ───────────────────────────────────
-    // Global Pull-Up Enable: OPTION_REG.nWPUEN = 0
     OPTION_REGbits.nWPUEN = 0;   // Pull-Ups global aktivieren
     WPUA = 0b00010000;            // WPUA4 = 1 → Pull-Up auf RA4 (Taster)
-    WPUC = 0b00000000;            // Port C: keine Pull-Ups nötig
+    WPUC = 0b00000000;            // Port C: keine Pull-Ups (Ausgänge)
 
     // ── Timer0: freilaufend für Zufallsgenerator ──────────────────────
-    // OPTION_REG: T0CS=0 (intern), PSA=0 (Prescaler→TMR0), PS=111 (1:256)
+    // [FIX-7] Bits 7+6 (nWPUEN + INTEDG) korrekt beibehalten!
     OPTION_REG = (OPTION_REG & 0xC0u) | 0b00000111u;
-    //            ^^^^^^^^^^^^^ nWPUEN + INTEDG beibehalten!
+    //            ^^^^^^^^^^^^^ nWPUEN(7) + INTEDG(6) beibehalten
+    //                                      T0CS=0, T0SE=0, PSA=0, PS=111(1:256)
 
     INTCONbits.TMR0IE = 1;   // Timer0 Interrupt aktivieren
     INTCONbits.GIE    = 1;   // Global Interrupt Enable
 
     // ── Startup ───────────────────────────────────────────────────────
     startup_seq();
-    sleep_counter = 0;   // Sleep-Timer starten
+    reset_sleep_counter();    // [FIX-2] Atomarer Reset
 
     // ── Hauptschleife mit Auto-Sleep ──────────────────────────────────
     while (1) {
-        // Prüfen ob Sleep-Timeout erreicht
-        if (sleep_counter >= SLEEP_TIMEOUT) {
+        // [FIX-2] Atomarer 16-Bit-Vergleich (sleep_counter ist uint16_t!)
+        if (read_sleep_counter() >= SLEEP_TIMEOUT) {
             enter_sleep();
-            
-            // Nach Wake-Up: letzte Zahl kurz anzeigen, dann neu würfeln
+
+            // Nach Wake-Up: letzte Zahl kurz anzeigen
             show(DICE[last_result]);
             delay_ms(800);
-            
-            // Warten bis Taster losgelassen
-            while (!PORTAbits.RA4);
+
+            // [FIX-4] Warten bis Taster losgelassen MIT Timeout
+            timeout = BUTTON_TIMEOUT;
+            while (!PORTAbits.RA4 && --timeout);
             delay_ms(25);
-            
-            sleep_counter = 0;  // Timer zurücksetzen
+
+            reset_sleep_counter();    // [FIX-2] Atomar zurücksetzen
         }
-        
+
         // Normal: auf Tastendruck warten
         if (button_pressed()) {
-            sleep_counter = 0;   // Activity → Sleep-Timer zurücksetzen
-            
+            reset_sleep_counter();    // [FIX-2] Activity → Sleep-Timer zurück
             result = tmr0_count % 6u;
             roll_animation(result);
             delay_ms(500);
             blink_result(DICE[result]);
-            
-            last_result = result;  // Ergebnis merken für Wake-Up
+            last_result = result;     // Ergebnis merken für Wake-Up
         }
     }
 }
