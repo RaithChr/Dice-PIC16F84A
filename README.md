@@ -9,7 +9,7 @@
 | U1      | PIC16F84A  | Mikrocontroller, DIP-18             |
 | C1      | 10 µF/10V  | VDD-Bypass, Elko                    |
 | R1      | 10 kΩ      | MCLR Pull-Up (unvermeidbar)         |
-| R2      | 3,3 kΩ     | RC-Oszillator (OSC1 → VDD)          |
+| R2      | **4,7 kΩ** | RC-Oszillator (OSC1 → VDD) ⚠️ mind. 3kΩ lt. DS40001440E |
 | C2      | 100 pF     | RC-Oszillator (OSC1 → GND)          |
 | LED1–7  | Clear/red  | Würfel-Anzeige                      |
 | R3–R9   | 270 Ω      | LED-Vorwiderstände (4,5 V Betrieb)  |
@@ -29,12 +29,25 @@
 ### RC-Oszillator Verdrahtung
 
 ```
-VDD ─── R2(3,3kΩ) ─── OSC1 ─── C2(100pF) ─── GND
+VDD ─── R2(4,7kΩ) ─── OSC1 ─── C2(100pF) ─── GND
                         │
                        PIC pin 16
+       OSC2 (pin 15) → N/C (gibt Fosc/4 aus im RC-Modus)
 ```
 
-Frequenz ≈ 1 / (0,72 × 3300 × 100e-12) ≈ 4,2 MHz
+Frequenz-Formel (DS40001440E, Table 14-2):
+```
+f ≈ 1 / (3 × REXT × CEXT)
+
+R2=4,7kΩ + C2=100pF → f ≈  709 kHz  ← empfohlen (sicher)
+R2=3,3kΩ + C2=100pF → f ≈ 1,01 MHz  (knapp über Minimum 3kΩ)
+R2=10kΩ  + C2=100pF → f ≈  333 kHz  (sehr stabil)
+```
+
+⚠️ **_XTAL_FREQ im Code muss zur gewählten RC-Frequenz passen!**
+- 4,7kΩ → `#define _XTAL_FREQ 700000UL`
+- 3,3kΩ → `#define _XTAL_FREQ 1000000UL`
+- 10kΩ  → `#define _XTAL_FREQ 330000UL`
 
 ### Pin-Belegung
 

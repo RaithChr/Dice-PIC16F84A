@@ -38,8 +38,9 @@
  *   U1   PIC16F84A      ×1
  *   C1   10 µF / 10 V   ×1   (VDD-Bypass)
  *   R1   10 kΩ          ×1   (MCLR Pull-Up, unvermeidbar)
- *   R2   3,3 kΩ         ×1   (RC-Oszillator OSC1↔VDD)
+ *   R2   4,7 kΩ         ×1   (RC-Oszillator OSC1↔VDD) ← sicherer als 3,3kΩ!
  *   C2   100 pF         ×1   (RC-Oszillator OSC1↔GND)
+ *        → f ≈ 1/(3×4700×100e-12) ≈ 709 kHz  → _XTAL_FREQ = 700000UL anpassen
  *   LED1–LED7           ×7
  *   R3–R9  270 Ω        ×7   (LED-Vorwiderstände für 4,5 V)
  *   SW1  Drucktaster    ×1
@@ -59,7 +60,17 @@
 #include <xc.h>
 #include <stdint.h>
 
-#define _XTAL_FREQ  4000000UL   // ~4 MHz (RC-Modus, nominell)
+// RC-Oszillator Frequenz (Datasheet DS40001440E, Table 14-2):
+// Formel: f ≈ 1 / (3 × REXT × CEXT)
+//
+//  R2=3,3kΩ + C2=100pF → f ≈ 1,01 MHz  (REXT an Minimum-Grenze! 3kΩ min lt. DS)
+//  R2=4,7kΩ + C2=100pF → f ≈  709 kHz  (empfohlen: sicherer Abstand!)
+//  R2=10kΩ  + C2=100pF → f ≈  333 kHz  (sicherste Option)
+//
+// WICHTIG: _XTAL_FREQ MUSS zur tatsächlichen RC-Frequenz passen,
+//          sonst sind alle __delay_ms() Werte falsch!
+#define _XTAL_FREQ  700000UL    // ~700 kHz (RC: 4,7kΩ + 100pF per DS40001440E)
+                                // Bei 3,3kΩ: 1000000UL verwenden
 
 // ─── LED-Bit-Definitionen ─────────────────────────────────────────────
 #define A  (1u<<0)   // RB0
