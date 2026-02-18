@@ -35,7 +35,7 @@
  *  R2  RC-Oszi      4,7 kΩ       →  ENTFÄLLT! (interner Oszi)
  *  C2  RC-Oszi      100 pF       →  ENTFÄLLT! (interner Oszi)
  *  ─────────────────────────────────────────────────────────────────────
- *  Gesamt           14 Bauteile  →  11–12 Bauteile  ← absolutes Minimum!
+ *  Gesamt           14 Bauteile  →  11–12 Bauteile ← absolutes Minimum!
  *
  * ─── AUTO-SLEEP FUNKTION ──────────────────────────────────────────────
  *
@@ -74,122 +74,132 @@
  * ─── MINIMALES BOM (ORIGINAL-kompatibel, 3V) ─────────────────────────
  *
  *   U1   PIC16F1825       ×1
- *   C1   100 nF / 50V     ×1   (VDD-Bypass, Keramik! Nah an VDD/VSS!)
+ *   C1   100 nF / 50V     ×1   [FIX-9] Keramik! Nah an VDD/VSS-Pins!
  *   C2   3,3 µF / 6,3V    ×1   (Bulk-Puffer, Elko, optional)
- *   LED1–LED7 (rot!)      ×7   ⚠️ NUR rot/gelb/grün! (kein Weiß/Blau!)
+ *   LED1–LED7 (rot!)      ×7   ⚠️ NUR rot/gelb/grün! (Vf<2,1V!)
  *   R1–R7  47 Ω           ×7   (LED-Vorwiderstände @ 3V, ~8-10mA)
  *   SW1  Drucktaster      ×1
  *   JP1  Jumper 2-Pin     ×1   (Power On/Off)
  *   BT1  2×AAA Halter     ×1   (3V nominal, 2,2V min)
  *   ────────────────────────────────────────────────────────────────────
- *   TOTAL  11–12 Bauteile  ← ORIGINAL-Layout, nur PIC getauscht!
+ *   TOTAL  11–12 Bauteile ← ORIGINAL-Layout, nur PIC getauscht!
  *
  * ─── BUGFIXES gegenüber Originalversion ──────────────────────────────
  *
- *  [FIX-1] LAT-Register statt PORT für Ausgaben (RMW-Problem vermieden)
- *          LATC/LATA5 statt PORTC/RA5 in show()
- *  [FIX-2] Atomarer 16-Bit-Zugriff auf sleep_counter
- *          (volatile uint16_t → GIE kurz deaktivieren!)
- *  [FIX-3] SLEEP_TIMEOUT korrigiert: 153 statt 610
- *          (TMR0 @ 4MHz/4/256 overflow = ~15,26 Hz, nicht 61 Hz!)
- *  [FIX-4] Button-Release-Timeout nach Wake-Up (kein ewiges Warten)
- *  [FIX-5] IOC-Flag vor SLEEP() löschen (verhindert sofortiges Re-Wake)
- *  [FIX-6] Separate Helper-Funktionen reset_sleep_counter() / read_sleep_counter()
- *  [FIX-7] OPTION_REG Bits 7+6 korrekt beibehalten beim Timer0-Setup
- *  [FIX-8] Unbenutzte RA0-RA2 als Ausgänge (definierter LOW-Zustand)
+ *  [FIX-1] LATx statt PORTx für alle Ausgaben (kein RMW-Problem)
+ *  [FIX-2] Atomare 16-Bit-Zugriffe auf sleep_counter (GIE-Klammer)
+ *  [FIX-3] IOCIF ist read-only → Zeile entfernt, Kommentar ergänzt
+ *  [FIX-4] Timeout in button_pressed() und nach Wake-Up
+ *  [FIX-5] Makro-Namen LED_x statt A–G (Kollisionssicher)
+ *  [FIX-6] _XTAL_FREQ vor #include <xc.h>
+ *  [FIX-7] Startup endet jetzt mit LEDs AUS (Stromsparen)
+ *  [FIX-8] Unbenutzte Pins RA0–RA2 als Ausgänge (definierter Zustand)
+ *  [FIX-9] BOM: 100nF Keramik-C als Bypass empfohlen
  *
  * ═══════════════════════════════════════════════════════════════════════
  */
 
+// ─── [FIX-6] _XTAL_FREQ VOR xc.h definieren ──────────────────────────
+// Damit __delay_ms() bei der Makro-Expansion die Frequenz kennt.
+#define _XTAL_FREQ  4000000UL
+
 // ─── CONFIG BITS (PIC16F1825) ─────────────────────────────────────────
 // CONFIG1
-#pragma config FOSC   = INTOSC  // Interner Oszillator
-#pragma config WDTE   = OFF     // Watchdog Timer aus
-#pragma config PWRTE  = ON      // Power-Up Timer an
-#pragma config MCLRE  = OFF     // RA3/MCLR → digitaler I/O (kein Pullup-R!)
-#pragma config CP     = OFF     // Kein Code-Schutz
-#pragma config CPD    = OFF     // Kein EEPROM-Schutz
-#pragma config BOREN  = ON      // Brown-Out Reset aktiv
-#pragma config CLKOUTEN = OFF   // CLKOUT aus
-#pragma config IESO   = OFF     // Intern/Extern-Umschaltung aus
-#pragma config FCMEN  = OFF     // Fail-Safe Clock Monitor aus
+#pragma config FOSC     = INTOSC  // Interner Oszillator ← kein externer Takt!
+#pragma config WDTE     = OFF     // Watchdog Timer aus
+#pragma config PWRTE    = ON      // Power-Up Timer an
+#pragma config MCLRE    = OFF     // RA3/MCLR → digitaler I/O (kein Pullup-R!)
+#pragma config CP       = OFF     // Kein Code-Schutz
+#pragma config CPD      = OFF     // Kein EEPROM-Schutz
+#pragma config BOREN    = ON      // Brown-Out Reset aktiv
+#pragma config CLKOUTEN = OFF     // CLKOUT aus (RA4 als I/O verfügbar)
+#pragma config IESO     = OFF     // Intern/Extern-Umschaltung aus
+#pragma config FCMEN    = OFF     // Fail-Safe Clock Monitor aus
 
 // CONFIG2
-#pragma config WRT    = OFF     // Flash Write-Schutz aus
-#pragma config PLLEN  = OFF     // PLL aus
-#pragma config STVREN = ON      // Stack-Overflow → Reset
-#pragma config BORV   = LO      // Brown-Out Low Trip Point
-#pragma config LVP    = OFF     // Low-Voltage Programming aus
+#pragma config WRT    = OFF   // Flash Write-Schutz aus
+#pragma config PLLEN  = OFF   // PLL aus (4x Multiplikator)
+#pragma config STVREN = ON    // Stack-Overflow → Reset
+#pragma config BORV   = LO   // Brown-Out Low Trip Point
+#pragma config LVP    = OFF   // Low-Voltage Programming aus
 
 #include <xc.h>
 #include <stdint.h>
 
-#define _XTAL_FREQ  4000000UL   // 4 MHz intern (exakt, kein RC-Toleranzproblem!)
-
-// ─── Timing-Konstanten ────────────────────────────────────────────────
-// TMR0 @ 4MHz: Fosc/4 = 1MHz → /256 (Prescaler) = 3906 Hz
-// Overflow bei 256 Counts: 3906/256 = ~15,26 Hz
-// [FIX-3] SLEEP_TIMEOUT korrigiert (war 610 — falsch!)
-#define SLEEP_TIMEOUT   153u    // 10 Sekunden × 15,26 Hz = 152,6 ≈ 153
-#define BUTTON_TIMEOUT  50000u  // [FIX-4] Button-Release-Timeout (~1-2s)
-
-// ─── LED-Bit-Definitionen ─────────────────────────────────────────────
-// Bits 0–5 = PORTC/LATC (RC0–RC5), Bit 6 = RA5/LATA5
-#define A  (1u<<0)   // RC0 – oben links
-#define B  (1u<<1)   // RC1 – oben rechts
-#define C  (1u<<2)   // RC2 – mitte links
-#define D  (1u<<3)   // RC3 – Zentrum (Auge)
-#define E  (1u<<4)   // RC4 – mitte rechts
-#define F  (1u<<5)   // RC5 – unten links
-#define G  (1u<<6)   // RA5 – unten rechts  ← anderer Port!
+// ─── [FIX-5] LED-Bit-Definitionen (kollisionssichere Namen) ──────────
+// Originale Makros A–G können mit Standard-Headern kollidieren!
+// Bits 0–5 = LATC (RC0–RC5), Bit 6 = LATA5
+#define LED_A  (1u<<0)   // RC0 – oben links
+#define LED_B  (1u<<1)   // RC1 – oben rechts
+#define LED_C  (1u<<2)   // RC2 – mitte links
+#define LED_D  (1u<<3)   // RC3 – Zentrum (Auge)
+#define LED_E  (1u<<4)   // RC4 – mitte rechts
+#define LED_F  (1u<<5)   // RC5 – unten links
+#define LED_G  (1u<<6)   // RA5 – unten rechts  ← anderer Port!
 
 // ─── Würfelmuster ─────────────────────────────────────────────────────
-const uint8_t DICE[6] = {
-    D,                           // ⚀  1: Zentrum
-    B|F,                         // ⚁  2: oben-rechts + unten-links
-    B|D|F,                       // ⚂  3: Diagonale + Mitte
-    A|B|F|G,                     // ⚃  4: vier Ecken
-    A|B|D|F|G,                   // ⚄  5: Ecken + Mitte
-    A|B|C|E|F|G,                 // ⚅  6: alle außer Mitte
+//  LED-Layout:     Würfel-Augen:
+//  [A] [B]         ● ●
+//  [C] [D] [E]     ● ● ●
+//  [F]     [G]     ●   ●
+static const uint8_t DICE[6] = {
+    LED_D,                                           // ⚀  1: Zentrum
+    LED_B | LED_F,                                   // ⚁  2: oben-rechts + unten-links
+    LED_B | LED_D | LED_F,                           // ⚂  3: Diagonale + Mitte
+    LED_A | LED_B | LED_F | LED_G,                   // ⚃  4: vier Ecken
+    LED_A | LED_B | LED_D | LED_F | LED_G,           // ⚄  5: Ecken + Mitte
+    LED_A | LED_B | LED_C | LED_E | LED_F | LED_G,   // ⚅  6: alle außer Mitte
 };
 
 // ─── Zufallsquelle + Sleep-Timer ──────────────────────────────────────
-// TMR0 läuft seit Power-On frei → beim Tastendruck ist der Zählerstand
-// "zufällig" (menschliche Reaktionszeit >> Timer-Auflösung ~65µs)
 volatile uint8_t  tmr0_count   = 0;
-volatile uint16_t sleep_counter = 0;  // [FIX-2] uint16_t: braucht atomaren Zugriff!
+volatile uint16_t sleep_counter = 0;   // Zählt TMR0-Interrupts bis Sleep
 
-void __interrupt() isr(void) {
-    // Timer0: Zufallsquelle + Sleep-Countdown
-    if (INTCONbits.TMR0IF) {
-        tmr0_count++;
-        sleep_counter++;           // ~15,26 Hz
-        INTCONbits.TMR0IF = 0;
-    }
-    // Interrupt-on-Change RA4: Wake-Up aus Sleep
-    if (INTCONbits.IOCIF) {
-        if (IOCAFbits.IOCAF4) {
-            IOCAFbits.IOCAF4 = 0;  // [FIX-5] Flag löschen → kein Re-Wake
-            sleep_counter = 0;
-        }
-        INTCONbits.IOCIF = 0;
-    }
+// Timer0 @ 4MHz/4 mit Prescaler 1:256 → ~61 Hz Overflow
+// 10 Sekunden = ~610 Interrupts
+#define SLEEP_TIMEOUT  610u
+
+// ─── [FIX-4] Timeout-Konstante für Taster-Warteschleifen ─────────────
+// Verhindert Endlosschleife bei verklemmtem/falsch verlötetem Taster.
+// 60000 × ca. 1 µs Schleifenzeit ≈ 60–120 ms max. Wartezeit
+#define BUTTON_TIMEOUT  60000u
+
+// ─── [FIX-2] Atomarer 16-Bit-Lesezugriff ─────────────────────────────
+// Auf einem 8-Bit-PIC wird uint16_t in ZWEI Schritten gelesen.
+// Die ISR kann genau dazwischen feuern → inkonsistenter Wert!
+static uint16_t read_sleep_counter(void) {
+    uint16_t val;
+    INTCONbits.GIE = 0;   // Interrupts sperren
+    val = sleep_counter;  // Atomar (kein ISR dazwischen)
+    INTCONbits.GIE = 1;   // Interrupts freigeben
+    return val;
 }
 
-// ─── [FIX-2] Atomarer 16-Bit-Zugriff auf sleep_counter ──────────────
-// uint16_t-Zugriff ist auf 8-Bit-PIC NICHT atomar → kurz GIE sperren!
+// ─── [FIX-2] Atomarer 16-Bit-Schreibzugriff ──────────────────────────
 static void reset_sleep_counter(void) {
     INTCONbits.GIE = 0;
     sleep_counter = 0;
     INTCONbits.GIE = 1;
 }
 
-static uint16_t read_sleep_counter(void) {
-    uint16_t val;
-    INTCONbits.GIE = 0;
-    val = sleep_counter;
-    INTCONbits.GIE = 1;
-    return val;
+// ─── Interrupt Service Routine ────────────────────────────────────────
+void __interrupt() isr(void) {
+    // Timer0: Zufallsquelle + Sleep-Counter
+    if (INTCONbits.TMR0IF) {
+        tmr0_count++;
+        sleep_counter++;
+        INTCONbits.TMR0IF = 0;
+    }
+    // Interrupt-on-Change RA4: Wake-Up vom Sleep
+    // [FIX-3] IOCIF ist READ-ONLY auf PIC16F1825!
+    // Es wird automatisch gelöscht, sobald alle IOCxFy-Flags = 0.
+    // Manuelles Löschen von IOCIF hat KEINE Wirkung → nur IOCAF4 löschen!
+    if (INTCONbits.IOCIF) {
+        if (IOCAFbits.IOCAF4) {        // RA4 hat Flanke ausgelöst
+            IOCAFbits.IOCAF4 = 0;     // Sub-Flag löschen → IOCIF geht auto auf 0
+            sleep_counter = 0;        // Sleep-Timer zurücksetzen (in ISR atomar OK)
+        }
+    }
 }
 
 // ─── Variable Delay ───────────────────────────────────────────────────
@@ -197,22 +207,25 @@ static void delay_ms(uint16_t ms) {
     while (ms--) __delay_ms(1);
 }
 
-// ─── [FIX-1] LED-Ausgabe via LAT (kein RMW-Problem!) ─────────────────
-// LATC/LATA statt PORTC/PORTA → schreibt direkt in Output-Latch,
-// liest NICHT den Pin-Zustand zurück (Read-Modify-Write vermieden!)
+// ─── [FIX-1] LED-Ausgabe: LATx statt PORTx (kein RMW!) ───────────────
+// Der PIC16F1825 hat LAT-Register → immer LATx für Ausgaben verwenden!
+// PORTx schreibt über Read-Modify-Write und kann bei schnellen
+// aufeinanderfolgenden Zugriffen falsche Pin-Zustände erzeugen.
+// (PIC16F84A hatte KEINE LAT-Register — dort gab es das RMW-Problem!)
 static void show(uint8_t pattern) {
     LATC = pattern & 0x3Fu;                    // RC0–RC5 via LATC
-    LATAbits.LATA5 = (pattern >> 6u) & 1u;     // RA5 via LATA5
+    LATAbits.LATA5 = (pattern >> 6u) & 1u;    // RA5 via LATA5
 }
 
-// ─── Taster-Polling: Software-Entprellung + Flanken-Erkennung ─────────
-// PORTAbits.RA4 bleibt korrekt für EINGÄNGE (PORT lesen = aktueller Pegel)
+// ─── [FIX-4] Taster auf RA4: mit Timeout-Absicherung ─────────────────
 static uint8_t button_pressed(void) {
-    if (!PORTAbits.RA4) {           // LOW = Taster gedrückt
-        delay_ms(25);               // Entprell-Fenster
-        if (!PORTAbits.RA4) {
-            while (!PORTAbits.RA4); // Warten bis losgelassen
-            delay_ms(15);
+    uint16_t timeout;
+    if (!PORTAbits.RA4) {            // Erste Abfrage: gedrückt?
+        delay_ms(25);                // Entprellung (25 ms)
+        if (!PORTAbits.RA4) {        // Immer noch gedrückt?
+            timeout = BUTTON_TIMEOUT;
+            while (!PORTAbits.RA4 && --timeout);
+            delay_ms(15);            // Loslassen entprellen
             return 1;
         }
     }
@@ -226,52 +239,50 @@ static void roll_animation(uint8_t final_idx) {
 
     for (i = 0; i < 24u; i++) {
         show(DICE[(tmr0_count + i) % 6u]);
-        if      (i <  8u) pause = 40;
-        else if (i < 16u) pause = 90;
-        else               pause = 160;
+        if      (i <  8u) pause = 40;    // Schnell (erste 8 Bilder)
+        else if (i < 16u) pause = 90;    // Mittel
+        else               pause = 160;  // Langsam (letzte 8)
         delay_ms(pause);
     }
-    show(DICE[final_idx]);
+    show(DICE[final_idx]);   // Endergebnis anzeigen
 }
 
 // ─── Ergebnis-Blinken ─────────────────────────────────────────────────
 static void blink_result(uint8_t pattern) {
     uint8_t i;
     for (i = 0; i < 3u; i++) {
-        show(0x00);     delay_ms(100);
-        show(pattern);  delay_ms(200);
+        show(0x00);     delay_ms(100);  // Aus
+        show(pattern);  delay_ms(200);  // An
     }
 }
 
-// ─── Einschalt-Animation ──────────────────────────────────────────────
+// ─── [FIX-7] Startup endet mit LEDs AUS ──────────────────────────────
+// Original ließ DICE[0] dauerhaft leuchten → unnötiger Stromverbrauch
+// bis zum ersten Tastendruck.
 static void startup_seq(void) {
     uint8_t i;
     for (i = 0; i < 6u; i++) { show(DICE[i]); delay_ms(140); }
     show(DICE[0]); delay_ms(400);
-    show(0x00);    delay_ms(200);
-    show(DICE[0]);
+    show(0x00);    delay_ms(200);   // LEDs aus → bereit
 }
 
 // ─── Sleep-Modus aktivieren ───────────────────────────────────────────
 static void enter_sleep(void) {
     show(0x00);                      // LEDs aus
 
-    // [FIX-5] IOC-Flag VOR Sleep löschen (verhindert sofortiges Re-Wake)
-    IOCAFbits.IOCAF4 = 0;
-    INTCONbits.IOCIF = 0;
-
-    // Negative Flanke auf RA4 aktivieren (Taster drücken = Wake)
+    // Interrupt-on-Change für RA4 aktivieren (negative Flanke = Tastendruck)
     IOCAPbits.IOCAP4 = 0;            // Positive Edge disabled
-    IOCANbits.IOCAN4 = 1;            // Negative Edge enabled
-    INTCONbits.IOCIE = 1;            // IOC Interrupt an
+    IOCANbits.IOCAN4 = 1;            // Negative Edge enabled (Taster drücken)
+    IOCAFbits.IOCAF4 = 0;            // Altes Flag löschen VOR Aktivierung!
+    INTCONbits.IOCIE = 1;            // IOC Interrupt aktivieren
 
     // Sleep-Counter zurücksetzen
-    sleep_counter = 0;               // Kein Interrupt-Risiko (wir schlafen gleich)
+    sleep_counter = 0;               // Kein Interrupt-Risiko (schlafen gleich)
 
     SLEEP();                         // PIC schlafen legen (~1 µA)
     NOP();                           // Nach Wake-Up hier weitermachen
 
-    // Nach Wake-Up: IOC deaktivieren
+    // Nach Wake-Up: IOC deaktivieren (nur TMR0 + Button-Polling)
     INTCONbits.IOCIE = 0;
     IOCANbits.IOCAN4 = 0;
 }
@@ -294,7 +305,7 @@ void main(void) {
     ANSELC = 0x00;   // Port C: alle Pins digital
 
     // ── Port-Konfiguration ────────────────────────────────────────────
-    // RA3 = 1 (immer Input-Only auf PIC16F1825)
+    // RA3 = 1 (immer Input-Only auf PIC16F1825, egal was man schreibt)
     // RA4 = 1 (Taster-Eingang)
     // RA5 = 0 (LED g Ausgang)
     // [FIX-8] RA0–RA2 = 0 (Ausgang, LOW) → definierter Zustand!
@@ -313,15 +324,13 @@ void main(void) {
     // ── Timer0: freilaufend für Zufallsgenerator ──────────────────────
     // [FIX-7] Bits 7+6 (nWPUEN + INTEDG) korrekt beibehalten!
     OPTION_REG = (OPTION_REG & 0xC0u) | 0b00000111u;
-    //            ^^^^^^^^^^^^^ nWPUEN(7) + INTEDG(6) beibehalten
-    //                                      T0CS=0, T0SE=0, PSA=0, PS=111(1:256)
 
     INTCONbits.TMR0IE = 1;   // Timer0 Interrupt aktivieren
     INTCONbits.GIE    = 1;   // Global Interrupt Enable
 
     // ── Startup ───────────────────────────────────────────────────────
-    startup_seq();
-    reset_sleep_counter();    // [FIX-2] Atomarer Reset
+    startup_seq();               // [FIX-7] Endet mit LEDs aus
+    reset_sleep_counter();       // [FIX-2] Atomarer Reset
 
     // ── Hauptschleife mit Auto-Sleep ──────────────────────────────────
     while (1) {
