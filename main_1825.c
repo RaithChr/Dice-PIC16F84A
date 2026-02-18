@@ -6,7 +6,7 @@
  *  Compiler:     MPLAB XC8 v2.x
  *  Ziel-IC:      PIC16F1825 (DIP-14)  ← NICHT PIC16F84A (DIP-18)!
  *  Takt:         INTERNER Oszillator 4 MHz  (KEIN externer RC, KEIN Quarz!)
- *  Versorgung:   3× AA  = 4,5 V  direkt an VDD
+ *  Versorgung:   2× AAA = 3,0 V  direkt an VDD (kompatibel zum Original!)
  *
  * ─── WICHTIGE UNTERSCHIEDE PIC16F84A vs. PIC16F1825 ─────────────────
  *
@@ -59,15 +59,16 @@
  *    [c=RC2] [d=RC3] [e=RC4]
  *    [f=RC5]         [g=RA5]
  *
- *  MINIMALES BOM (absolut):
+ *  MINIMALES BOM (ORIGINAL-kompatibel, 3V):
  *   U1   PIC16F1825     ×1
- *   C1   10 µF / 10 V   ×1   (VDD-Bypass)
- *   LED1–LED7           ×7
- *   R1–R7  270 Ω        ×7   (LED-Vorwiderstände)
+ *   C1   3,3 µF / 6,3V  ×1   (VDD-Bypass, Elko)
+ *   LED1–LED7 (rot!)    ×7   ⚠️ NUR rot/gelb/grün! (Vf<2,1V, kein Weiß/Blau!)
+ *   R1–R7  47 Ω         ×7   (LED-Vorwiderstände @ 3V, ~8-10mA)
  *   SW1  Drucktaster    ×1
- *   BT1  3×AA Halter    ×1
- *   ──────────────────────────
- *   TOTAL  11 Bauteile  ← 3 weniger als PIC16F84A-Design!
+ *   JP1  Jumper 2-Pin   ×1   (Power On/Off)
+ *   BT1  2×AAA Halter   ×1   (3V nominal, 2,2V min)
+ *   ────────────────────────────────────────────────────────────────
+ *   TOTAL  11 Bauteile  ← ORIGINAL-Layout, nur PIC getauscht!
  *
  * ═══════════════════════════════════════════════════════════════════════
  */
