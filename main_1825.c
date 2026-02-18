@@ -36,6 +36,17 @@
  *  ─────────────────────────────────────────────────────────────────────
  *  Gesamt           14 Bauteile  →  11 Bauteile  ← absolutes Minimum!
  *
+ * ─── AUTO-SLEEP FUNKTION ──────────────────────────────────────────────
+ *
+ *  Nach 10 Sekunden Inaktivität → SLEEP-Modus (~1 µA Stromaufnahme!)
+ *  Tastendruck → Wake-Up via Interrupt-on-Change (IOC) auf RA4
+ *  Nach Wake-Up: letzte Zahl kurz anzeigen (800ms), dann neu würfeln
+ *
+ *  Batterie-Laufzeit (2×AAA, 1200mAh):
+ *   - Aktiv (6 LEDs):  ~48mA → 25h Dauerbetrieb
+ *   - Sleep:           ~1µA  → mehrere JAHRE Standby!
+ *   - Normal (10×/Tag): mehrere MONATE
+ *
  * ─── PIN-BELEGUNG PIC16F1825 DIP-14 ─────────────────────────────────
  *
  *         ┌────────────────┐
@@ -120,13 +131,29 @@ const uint8_t DICE[6] = {
     A|B|C|E|F|G,                 // ⚅  6: alle außer Mitte
 };
 
-// ─── Zufallsquelle: TMR0 freilaufend ─────────────────────────────────
+// ─── Zufallsquelle + Sleep-Timer ──────────────────────────────────────
 volatile uint8_t tmr0_count = 0;
+volatile uint16_t sleep_counter = 0;  // Zählt TMR0 Interrupts bis Sleep
+
+// Timer0 @ 4MHz/4 mit Prescaler 1:256 → ~61 Hz Overflow
+// 10 Sekunden = 610 Interrupts
+#define SLEEP_TIMEOUT  610u
 
 void __interrupt() isr(void) {
+    // Timer0: Zufallsquelle + Sleep-Counter
     if (INTCONbits.TMR0IF) {
         tmr0_count++;
+        sleep_counter++;
         INTCONbits.TMR0IF = 0;
+    }
+    
+    // Interrupt-on-Change RA4: Wake-Up vom Sleep
+    if (INTCONbits.IOCIF) {
+        if (IOCAFbits.IOCAF4) {        // RA4 hat Flanke ausgelöst
+            IOCAFbits.IOCAF4 = 0;      // Flag löschen
+            sleep_counter = 0;         // Sleep-Timer zurücksetzen
+        }
+        INTCONbits.IOCIF = 0;
     }
 }
 
@@ -185,9 +212,32 @@ static void startup_seq(void) {
     show(DICE[0]);
 }
 
+// ─── Sleep-Modus aktivieren ────────────────────────────────────────────
+static void enter_sleep(void) {
+    // LEDs ausschalten
+    show(0x00);
+    
+    // Interrupt-on-Change für RA4 aktivieren (negative Flanke = Tastendruck)
+    IOCAPbits.IOCAP4 = 0;    // Positive Edge disabled
+    IOCANbits.IOCAN4 = 1;    // Negative Edge enabled (Taster drücken)
+    INTCONbits.IOCIE = 1;    // IOC Interrupt aktivieren
+    
+    // Sleep-Counter zurücksetzen
+    sleep_counter = 0;
+    
+    // PIC schlafen legen
+    SLEEP();
+    NOP();   // Nach Wake-Up hier weitermachen
+    
+    // Nach Wake-Up: IOC wieder deaktivieren (nur TMR0 + Button-Polling)
+    INTCONbits.IOCIE = 0;
+    IOCANbits.IOCAN4 = 0;
+}
+
 // ─── MAIN ─────────────────────────────────────────────────────────────
 void main(void) {
     uint8_t result;
+    uint8_t last_result = 0;  // Letzte gewürfelte Zahl merken
 
     // ── Interner Oszillator auf 4 MHz ─────────────────────────────────
     // OSCCON: IRCF<3:0> = 1101 → 4 MHz (Datasheet DS41440E, Table 5-1)
@@ -223,15 +273,37 @@ void main(void) {
     INTCONbits.TMR0IE = 1;   // Timer0 Interrupt aktivieren
     INTCONbits.GIE    = 1;   // Global Interrupt Enable
 
-    // ── Startup & Hauptschleife ───────────────────────────────────────
+    // ── Startup ───────────────────────────────────────────────────────
     startup_seq();
+    sleep_counter = 0;   // Sleep-Timer starten
 
+    // ── Hauptschleife mit Auto-Sleep ──────────────────────────────────
     while (1) {
+        // Prüfen ob Sleep-Timeout erreicht
+        if (sleep_counter >= SLEEP_TIMEOUT) {
+            enter_sleep();
+            
+            // Nach Wake-Up: letzte Zahl kurz anzeigen, dann neu würfeln
+            show(DICE[last_result]);
+            delay_ms(800);
+            
+            // Warten bis Taster losgelassen
+            while (!PORTAbits.RA4);
+            delay_ms(25);
+            
+            sleep_counter = 0;  // Timer zurücksetzen
+        }
+        
+        // Normal: auf Tastendruck warten
         if (button_pressed()) {
+            sleep_counter = 0;   // Activity → Sleep-Timer zurücksetzen
+            
             result = tmr0_count % 6u;
             roll_animation(result);
             delay_ms(500);
             blink_result(DICE[result]);
+            
+            last_result = result;  // Ergebnis merken für Wake-Up
         }
     }
 }

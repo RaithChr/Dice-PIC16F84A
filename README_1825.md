@@ -85,12 +85,19 @@ Blau      3,0V    –        –         ❌ geht NICHT!
 
 ⚠️ **Wichtig:** Nur rote, gelbe oder grüne LEDs verwenden!
 
-### Batterie-Laufzeit
+### Batterie-Laufzeit (mit Auto-Sleep!)
 
 - 2×AAA ≈ 1200 mAh
-- Würfel "6": 6 LEDs × 8mA = 48mA
-- Dauerbetrieb: ~25h
-- Normalbetrieb (gelegentlich würfeln): **mehrere Wochen**
+- Aktiv (6 LEDs): 6 × 8mA = 48mA → ~25h Dauerbetrieb
+- **Sleep-Modus: ~1µA** → mehrere **JAHRE** Standby!
+- Normalbetrieb (10× würfeln/Tag, Auto-Sleep): **mehrere MONATE**
+
+### Auto-Sleep Feature
+
+- Nach **10 Sekunden** Inaktivität → SLEEP-Modus (~1µA)
+- Tastendruck → Wake-Up via Interrupt-on-Change (IOC)
+- Nach Wake-Up: **letzte Zahl 800ms anzeigen**, dann neu würfeln
+- Stromersparnis: ~99,998% im Standby!
 
 ### Kompilieren (MPLAB-X)
 
